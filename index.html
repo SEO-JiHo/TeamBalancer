@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스포츠 팀 자동 생성기</title>
+    
+    <!-- Tailwind CSS (Design) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SheetJS (Excel Processing) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- html2canvas (Image Generation) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <!-- FontAwesome (Icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-indigo-600 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-people-group"></i> 팀 밸런서
+            </h1>
+            <div class="text-sm text-indigo-200">풋그리나 ⚽</div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto px-4 py-8 max-w-5xl">
+        
+        <!-- Step 1: Upload & Settings -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4 border-b pb-2 text-indigo-700">
+                <i class="fa-solid fa-gear mr-2"></i>설정 및 데이터 불러오기
+            </h2>
+            
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- File Upload -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-2">엑셀 파일 선택 (.xlsx)</label>
+                    <div class="relative border-2 border-dashed border-indigo-200 rounded-lg p-6 text-center hover:bg-indigo-50 transition cursor-pointer" id="dropZone">
+                        <input type="file" id="fileInput" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                        <div class="text-indigo-500 text-4xl mb-2"><i class="fa-solid fa-file-excel"></i></div>
+                        <p class="text-sm text-slate-500">엑셀 파일을 이곳에 드래그하거나 클릭하세요</p>
+                        <p class="text-xs text-slate-400 mt-1">필수 열: 이름, 성별(남/여), 평점</p>
+                    </div>
+                </div>
+
+                <!-- Options -->
+                <div class="flex flex-col justify-center space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-2">팀 개수 설정</label>
+                        <div class="flex space-x-4">
+                            <label class="flex items-center space-x-2 cursor-pointer bg-slate-100 px-4 py-2 rounded-lg hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition">
+                                <input type="radio" name="teamCount" value="2" checked class="text-indigo-600 focus:ring-indigo-500">
+                                <span class="font-medium">두 팀 (1팀 vs 2팀)</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer bg-slate-100 px-4 py-2 rounded-lg hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition">
+                                <input type="radio" name="teamCount" value="3" class="text-indigo-600 focus:ring-indigo-500">
+                                <span class="font-medium">세 팀 (1팀 vs 2팀 vs 3팀)</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-yellow-50 p-3 rounded-lg border border-yellow-100 text-xs text-yellow-700">
+                        <i class="fa-solid fa-circle-info mr-1"></i>
+                        성별 비율과 평점 총합을 자동으로 맞추며, 실행 시마다 약간의 랜덤성이 부여됩니다.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Member List (Hidden initially) -->
+        <div id="memberSection" class="hidden bg-white rounded-xl shadow-md p-6 mb-6 fade-in">
+            <div class="flex flex-col md:flex-row justify-between items-end md:items-center mb-4 border-b pb-4 gap-4">
+                <h2 class="text-lg font-semibold text-indigo-700 whitespace-nowrap">
+                    <i class="fa-solid fa-user-check mr-2"></i>참석 멤버 선택
+                    <span id="memberCountBadge" class="ml-2 bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full">0명</span>
+                </h2>
+                                
+                <!-- NEW: Selected Names Display -->
+                <div id="selectedNamesDisplay" class="text-sm font-medium text-blue-600 w-full min-h-[1.5rem]">
+                    <!-- 선택된 멤버 이름이 여기에 표시됩니다. -->
+                </div>
+                
+                <div class="flex w-full md:w-auto gap-2 flex-col md:flex-row">
+                    <!-- Search Bar -->
+                    <div class="relative w-full md:w-64">
+                        <input type="text" id="searchInput" placeholder="이름 검색..." class="w-full pl-10 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition shadow-sm">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-xs"></i>
+                    </div>
+                    
+                    <!-- Toggle Buttons -->
+                    <div class="flex gap-2 shrink-0">
+                        <button onclick="toggleAll(true)" class="flex-1 text-xs bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded border border-indigo-200 text-indigo-700 transition font-medium">전체 선택</button>
+                        <button onclick="toggleAll(false)" class="flex-1 text-xs bg-white hover:bg-slate-50 px-4 py-2 rounded border border-slate-300 text-slate-600 transition font-medium">전체 해제</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-y-auto max-h-96 border rounded-lg relative bg-slate-50">
+                <table class="w-full text-sm text-left text-slate-600">
+                    <thead class="text-xs text-slate-700 uppercase bg-slate-100 sticky top-0 shadow-sm z-10">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 w-16 text-center">참석</th>
+                            <th scope="col" class="px-6 py-3">이름</th>
+                            <th scope="col" class="px-6 py-3 text-center">성별</th>
+                            <th scope="col" class="px-6 py-3 text-center">평점</th>
+                        </tr>
+                    </thead>
+                    <tbody id="memberTableBody" class="bg-white divide-y divide-slate-100">
+                        <!-- Data will be injected here -->
+                    </tbody>
+                </table>
+                <div id="noResultMsg" class="hidden p-8 text-center text-slate-400 text-sm">
+                    검색 결과가 없습니다.
+                </div>
+            </div>
+
+            <div class="mt-6 text-center">
+                <p class="text-xs text-slate-500 mb-2">
+                    <i class="fa-solid fa-check text-indigo-500"></i> 선택된 인원만으로 팀 밸런싱을 진행합니다.
+                </p>
+                <button onclick="generateTeams()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-10 rounded-full shadow-lg transform transition hover:-translate-y-1 active:translate-y-0 flex items-center justify-center mx-auto gap-2 text-lg">
+                    <i class="fa-solid fa-shuffle"></i> 팀 편성 실행
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: Results -->
+        <div id="resultSection" class="hidden fade-in pb-10">
+            <div class="flex justify-between items-center mb-6">
+                 <h2 class="text-2xl font-bold text-slate-800 flex items-center">
+                    <i class="fa-solid fa-trophy text-yellow-500 mr-2"></i>팀 편성 결과
+                </h2>
+                <div id="balanceBadge" class="bg-green-100 text-green-800 text-xs px-3 py-1 rounded-full font-bold border border-green-200">
+                    <!-- Balance score will go here -->
+                </div>
+            </div>
+           
+            <div id="teamsContainer" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                <!-- Teams will be injected here -->
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="flex flex-col sm:flex-row justify-center items-center gap-4">
+                <button onclick="generateTeams()" class="px-6 py-2 border border-indigo-600 text-indigo-600 rounded-lg hover:bg-indigo-50 transition flex items-center gap-2">
+                    <i class="fa-solid fa-rotate-right"></i> 다시 돌리기
+                </button>
+                
+                <button onclick="downloadImage()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md transition flex items-center gap-2">
+                    <i class="fa-solid fa-image"></i> 이미지 저장 (이름+성별)
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="bg-slate-800 text-slate-400 text-center py-6 text-sm mt-auto">
+        <p>&copy; 2024 Sports Team Balancer. Optimized by Monte Carlo Simulation.</p>
+    </footer>
+
+    <!-- Javascript Logic -->
+    <script>
+        let allData = [];
+        let currentTeams = []; // To store the latest result for image export
+        
+        // 1. File Parsing Logic
+        document.getElementById('fileInput').addEventListener('change', handleFile, false);
+
+        // Search Logic
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const term = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('#memberTableBody tr');
+            let hasVisible = false;
+            
+            rows.forEach(row => {
+                const name = row.querySelector('.member-name').textContent.toLowerCase();
+                if (name.includes(term)) {
+                    row.classList.remove('hidden');
+                    hasVisible = true;
+                } else {
+                    row.classList.add('hidden');
+                }
+            });
+
+            const msg = document.getElementById('noResultMsg');
+            if(!hasVisible && rows.length > 0) msg.classList.remove('hidden');
+            else msg.classList.add('hidden');
+        });
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                
+                if (jsonData.length === 0) {
+                    alert("데이터가 비어있습니다.");
+                    return;
+                }
+
+                allData = jsonData.map((row, index) => {
+                    const name = row['이름'] || row['Name'] || row['name'] || `Member ${index}`;
+                    const gender = row['성별'] || row['Gender'] || row['sex'] || '남';
+                    const rating = parseFloat(row['평점'] || row['Rating'] || row['score'] || 0);
+                    
+                    return { id: index, name, gender, rating, checked: false };
+                });
+
+                renderTable();
+                document.getElementById('memberSection').classList.remove('hidden');
+                
+                setTimeout(() => {
+                    document.getElementById('memberSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 2. UI Rendering
+        function renderTable() {
+            const tbody = document.getElementById('memberTableBody');
+            tbody.innerHTML = '';
+            
+            allData.forEach(member => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-indigo-50 transition-colors";
+                const genderClass = (member.gender.includes('여') || member.gender === 'F') ? 'text-pink-500 bg-pink-50 border-pink-100' : 'text-blue-500 bg-blue-50 border-blue-100';
+                const isChecked = member.checked ? 'checked' : '';
+
+                tr.innerHTML = `
+                    <td class="px-6 py-3 text-center">
+                        <input type="checkbox" ${isChecked} class="member-checkbox w-5 h-5 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer transition" data-id="${member.id}">
+                    </td>
+                    <td class="px-6 py-3 font-medium text-slate-900 member-name cursor-pointer select-none" onclick="toggleRow(${member.id})">${member.name}</td>
+                    <td class="px-6 py-3 text-center">
+                        <span class="${genderClass} border px-2 py-1 rounded text-xs font-bold shadow-sm">${member.gender}</span>
+                    </td>
+                    <td class="px-6 py-3 text-center font-mono font-semibold text-slate-600">${member.rating}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            updateCount();
+
+            document.querySelectorAll('.member-checkbox').forEach(box => {
+                box.addEventListener('change', (e) => {
+                    const id = parseInt(e.target.getAttribute('data-id'));
+                    updateMemberStatus(id, e.target.checked);
+                });
+            });
+        }
+
+        function toggleRow(id) {
+            const checkbox = document.querySelector(`.member-checkbox[data-id="${id}"]`);
+            if(checkbox) {
+                checkbox.checked = !checkbox.checked;
+                updateMemberStatus(id, checkbox.checked);
+            }
+        }
+
+        function updateMemberStatus(id, status) {
+            const member = allData.find(m => m.id === id);
+            if(member) member.checked = status;
+            updateCount();
+        }
+
+        function updateSelectedNamesDisplay() {
+            const selected = allData.filter(m => m.checked).map(m => m.name);
+            const displayElement = document.getElementById('selectedNamesDisplay');
+            
+            if (selected.length > 0) {
+                // 이름 사이에 회색 '/' 문자를 넣어 구분합니다.
+                displayElement.innerHTML = selected.join('<span class="text-slate-400 mx-1">/</span>');
+            } else {
+                displayElement.textContent = "선택된 멤버가 없습니다.";
+            }
+        }
+
+        function updateCount() {
+            const count = allData.filter(m => m.checked).length;
+            document.getElementById('memberCountBadge').innerText = `${count}명`;
+            updateSelectedNamesDisplay(); // 이름 목록 업데이트 함수 호출
+        }
+
+        function toggleAll(status) {
+            allData.forEach(m => m.checked = status);
+            document.querySelectorAll('.member-checkbox').forEach(box => box.checked = status);
+            updateCount();
+        }
+
+        function updateCount() {
+            const count = allData.filter(m => m.checked).length;
+            document.getElementById('memberCountBadge').innerText = `${count}명`;
+        }
+
+        // 3. Core Logic - Revised Balancing (Balanced Slots + Noisy Greedy)
+        function generateTeams() {
+            const selectedMembers = allData.filter(m => m.checked);
+            if (selectedMembers.length < 2) {
+                alert("최소 2명 이상의 멤버를 선택해주세요.");
+                return;
+            }
+
+            const teamCount = parseInt(document.querySelector('input[name="teamCount"]:checked').value);
+            const isFemale = (g) => g.includes('여') || g === 'F' || g === 'f' || g === 'Woman';
+            
+            // Separate genders
+            const females = selectedMembers.filter(m => isFemale(m.gender));
+            const males = selectedMembers.filter(m => !isFemale(m.gender));
+
+            let bestResult = null;
+            let minDifference = Infinity;
+
+            // RUN SIMULATION 200 TIMES
+            const SIMULATION_COUNT = 200;
+
+            for(let i = 0; i < SIMULATION_COUNT; i++) {
+                const simResult = simulateOneRound(males, females, teamCount);
+                
+                // Metrics
+                const scores = simResult.map(t => t.totalRating);
+                const maxScore = Math.max(...scores);
+                const minScore = Math.min(...scores);
+                const diff = maxScore - minScore;
+
+                if (diff < minDifference) {
+                    minDifference = diff;
+                    bestResult = simResult;
+                } else if (diff === minDifference && Math.random() > 0.5) {
+                    bestResult = simResult;
+                }
+                
+                if (minDifference < 0.1) break;
+            }
+            
+            // Store for image export
+            currentTeams = bestResult; 
+            renderTeams(bestResult, minDifference);
+        }
+
+        function simulateOneRound(malesList, femalesList, teamCount) {
+            const maleSlots = getSlots(malesList.length, teamCount);
+            const femaleSlots = getSlots(femalesList.length, teamCount);
+
+            let teams = Array.from({ length: teamCount }, (_, i) => ({
+                id: i,
+                name: String.fromCharCode(65 + i) + "팀", 
+                members: [],
+                totalRating: 0,
+                males: 0,
+                females: 0,
+                maxMales: maleSlots[i],
+                maxFemales: femaleSlots[i]
+            }));
+
+            function distributeGroup(group, isFemaleGroup) {
+                const noisyList = group.map(m => ({
+                    ...m,
+                    noisyRating: m.rating + (Math.random() - 0.5) * 2.0 
+                }));
+
+                noisyList.sort((a, b) => b.noisyRating - a.noisyRating);
+
+                noisyList.forEach(wrapper => {
+                    const member = { ...wrapper };
+                    delete member.noisyRating; // clean up
+
+                    const validTeams = teams.filter(t => {
+                        if(isFemaleGroup) return t.females < t.maxFemales;
+                        else return t.males < t.maxMales;
+                    });
+
+                    validTeams.sort((a, b) => a.totalRating - b.totalRating);
+                    const targetTeam = validTeams[0];
+
+                    targetTeam.members.push(member);
+                    targetTeam.totalRating += member.rating;
+                    if(isFemaleGroup) targetTeam.females++;
+                    else targetTeam.males++;
+                });
+            }
+
+            distributeGroup(femalesList, true);
+            distributeGroup(malesList, false);
+
+            return teams;
+        }
+
+        function getSlots(totalItems, binCount) {
+            const base = Math.floor(totalItems / binCount);
+            const remainder = totalItems % binCount;
+            const slots = new Array(binCount).fill(base);
+            for(let i=0; i<remainder; i++) {
+                slots[i]++;
+            }
+            return slots.sort(() => Math.random() - 0.5);
+        }
+
+        function renderTeams(teams, diff) {
+            const container = document.getElementById('teamsContainer');
+            container.innerHTML = '';
+            container.className = `grid gap-6 ${teams.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`;
+
+            const badge = document.getElementById('balanceBadge');
+            badge.innerHTML = `최대 점수차: ${diff.toFixed(2)}점`;
+            if(diff <= 1.0) {
+                badge.className = "bg-green-100 text-green-800 text-xs px-3 py-1 rounded-full font-bold border border-green-200";
+                badge.innerHTML += " (완벽👍)";
+            } else {
+                badge.className = "bg-yellow-100 text-yellow-800 text-xs px-3 py-1 rounded-full font-bold border border-yellow-200";
+                badge.innerHTML += " (양호)";
+            }
+
+            teams.forEach(team => {
+                const avgRating = (team.totalRating / (team.members.length || 1)).toFixed(2);
+                team.members.sort((a, b) => b.rating - a.rating);
+
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200 flex flex-col";
+                
+                let memberListHtml = team.members.map(m => {
+                    const genderColor = (m.gender.includes('여') || m.gender === 'F') ? 'text-pink-500' : 'text-blue-500';
+                    return `
+                        <li class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+                            <span class="font-medium text-slate-700">${m.name}</span>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs font-bold ${genderColor}">${m.gender}</span>
+                                <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-mono">${m.rating}</span>
+                            </div>
+                        </li>
+                    `;
+                }).join('');
+
+                card.innerHTML = `
+                    <div class="bg-indigo-600 text-white p-4 text-center relative">
+                        <h3 class="text-2xl font-bold">${team.name}</h3>
+                        <div class="absolute top-4 right-4 text-indigo-200 text-xs">
+                            <i class="fa-solid fa-users"></i> ${team.members.length}명
+                        </div>
+                    </div>
+                    <div class="p-4 bg-indigo-50 border-b border-indigo-100 flex justify-around text-center">
+                        <div>
+                            <div class="text-xs text-indigo-400 uppercase font-bold">총 평점</div>
+                            <div class="font-bold text-indigo-800 text-lg">${team.totalRating.toFixed(1)}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-indigo-400 uppercase font-bold">평균</div>
+                            <div class="font-bold text-indigo-800 text-lg">${avgRating}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-indigo-400 uppercase font-bold">성비(남:여)</div>
+                            <div class="font-bold text-indigo-800 text-lg">
+                                <span class="text-blue-600">${team.males}</span>:<span class="text-pink-600">${team.females}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4 flex-grow overflow-y-auto max-h-96">
+                        <ul>${memberListHtml}</ul>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            document.getElementById('resultSection').classList.remove('hidden');
+            document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // 4. Image Export Logic (1080x720px, No Ratings)
+        async function downloadImage() {
+            if (!currentTeams || currentTeams.length === 0) return;
+
+            // Create a temporary container for the capture
+            const exportContainer = document.createElement('div');
+            exportContainer.style.width = '1080px';
+            exportContainer.style.minHeight = '720px'; // Allow it to grow if list is super long
+            exportContainer.style.position = 'fixed';
+            exportContainer.style.left = '-9999px';
+            exportContainer.style.top = '0';
+            exportContainer.style.backgroundColor = '#ffffff'; // Changed to white
+            exportContainer.style.padding = '0'; // Changed padding to 0 to remove grey border
+            exportContainer.style.display = 'flex';
+            exportContainer.style.flexDirection = 'column';
+            exportContainer.style.boxSizing = 'border-box';
+
+            // Header
+            const today = new Date().toLocaleDateString('ko-KR', {year: 'numeric', month: 'long', day: 'numeric'});
+            let html = `
+                <div style="text-align: center; margin: 40px 0;">
+                    <h1 style="font-size: 48px; font-weight: bold; color: #334155; margin: 0;">팀 편성 결과</h1>
+                    <p style="font-size: 24px; color: #64748b; margin-top: 10px;">${today}</p>
+                </div>
+                <div style="display: flex; gap: 30px; flex: 1; align-items: flex-start; padding: 0 40px 40px 40px;">
+            `;
+            
+            // Team Cards
+            currentTeams.forEach(team => {
+                // Sort by name for image export
+                team.members.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+                
+                html += `
+                    <div style="flex: 1; background: white; border-radius: 20px; overflow: hidden; border: 2px solid #668ffe;">
+                        <div style="background: #4f46e5; color: white; padding: 20px; text-align: center;">
+                            <h2 style="font-size: 36px; font-weight: bold; margin: 0;">${team.name}</h2>
+                            <span style="font-size: 18px; opacity: 0.9;">${team.members.length}명</span>
+                        </div>
+                        <div style="padding: 20px;">
+                            <ul style="list-style: none; padding: 0; margin: 0;">
+                `;
+
+                team.members.forEach(m => {
+                    const isFemale = m.gender.includes('여') || m.gender === 'F';
+                    const genderColor = isFemale ? '#ec4899' : '#3b82f6'; // Pink / Blue
+                    const genderBg = isFemale ? '#fdf2f8' : '#eff6ff';
+                    
+                    html += `
+                        <li style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #8c8c8c; font-size: 20px; background: white;">
+                            <span style="font-weight: 500; color: #1e293b;">${m.name}</span>
+                            <span style="background: ${genderBg}; color: ${genderColor}; padding: 4px 12px; border-radius: 12px; font-size: 16px; font-weight: bold;">${m.gender}</span>
+                        </li>
+                    `;
+                });
+
+                html += `
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `</div>`;
+            exportContainer.innerHTML = html;
+            document.body.appendChild(exportContainer);
+
+            // Capture
+            try {
+                const canvas = await html2canvas(exportContainer, {
+                    scale: 1, // 1:1 scale for 1080px
+                    useCORS: true,
+                    backgroundColor: '#ffffff' // Changed to white
+                });
+
+                // Trigger Download
+                const link = document.createElement('a');
+                link.download = `Team_Result_${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            } catch (err) {
+                console.error("Image generation failed", err);
+                alert("이미지 저장 중 오류가 발생했습니다.");
+            } finally {
+                document.body.removeChild(exportContainer);
+            }
+        }
+    </script>
+</body>
+</html>
