@@ -83,17 +83,21 @@
 
         <!-- Step 2: Member List (Hidden initially) -->
         <div id="memberSection" class="hidden bg-white rounded-xl shadow-md p-6 mb-6 fade-in">
-            <div class="flex flex-col md:flex-row justify-between items-end md:items-center mb-4 border-b pb-4 gap-4">
+            <div class="flex flex-col justify-start mb-4 border-b pb-4 gap-2">
+                <!-- Title and Count -->
                 <h2 class="text-lg font-semibold text-indigo-700 whitespace-nowrap">
                     <i class="fa-solid fa-user-check mr-2"></i>참석 멤버 선택
                     <span id="memberCountBadge" class="ml-2 bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full">0명</span>
                 </h2>
-                                
+                
                 <!-- NEW: Selected Names Display -->
                 <div id="selectedNamesDisplay" class="text-sm font-medium text-blue-600 w-full min-h-[1.5rem]">
                     <!-- 선택된 멤버 이름이 여기에 표시됩니다. -->
                 </div>
-                
+            </div>
+
+            <!-- Search and Toggle Buttons -->
+            <div class="flex flex-col md:flex-row justify-between items-end md:items-center mb-4 gap-4">
                 <div class="flex w-full md:w-auto gap-2 flex-col md:flex-row">
                     <!-- Search Bar -->
                     <div class="relative w-full md:w-64">
@@ -304,11 +308,6 @@
             allData.forEach(m => m.checked = status);
             document.querySelectorAll('.member-checkbox').forEach(box => box.checked = status);
             updateCount();
-        }
-
-        function updateCount() {
-            const count = allData.filter(m => m.checked).length;
-            document.getElementById('memberCountBadge').innerText = `${count}명`;
         }
 
         // 3. Core Logic - Revised Balancing (Balanced Slots + Noisy Greedy)
