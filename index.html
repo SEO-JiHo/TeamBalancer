@@ -559,7 +559,18 @@
 
             teams.forEach(team => {
                 const avgRating = (team.totalRating / (team.members.length || 1)).toFixed(2);
-                team.members.sort((a, b) => b.rating - a.rating);
+                team.members.sort((a, b) => {
+                    const isMercA = !!a.isMercenary;
+                    const isMercB = !!b.isMercenary;
+
+                    // 1. 용병 여부가 다르면? -> 용병을 뒤로 보냄
+                    if (isMercA !== isMercB) {
+                        return isMercA ? 1 : -1;
+                    }
+
+                    // 2. 둘 다 같은 신분이면? -> 점수 높은 순서 (기존 로직 유지)
+                    return b.rating - a.rating;
+                });
 
                 const card = document.createElement('div');
                 card.className = "bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200 flex flex-col";
