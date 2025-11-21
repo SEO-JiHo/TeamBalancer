@@ -420,13 +420,6 @@
 
             const badge = document.getElementById('balanceBadge');
             badge.innerHTML = `최대 점수차: ${diff.toFixed(2)}점`;
-            if(diff <= 1.0) {
-                badge.className = "bg-green-100 text-green-800 text-xs px-3 py-1 rounded-full font-bold border border-green-200";
-                badge.innerHTML += " (완벽👍)";
-            } else {
-                badge.className = "bg-yellow-100 text-yellow-800 text-xs px-3 py-1 rounded-full font-bold border border-yellow-200";
-                badge.innerHTML += " (양호)";
-            }
 
             teams.forEach(team => {
                 const avgRating = (team.totalRating / (team.members.length || 1)).toFixed(2);
