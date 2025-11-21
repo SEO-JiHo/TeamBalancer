@@ -108,9 +108,24 @@
                     </div>
                     
                     <!-- Toggle Buttons -->
-                    <div class="flex gap-2 shrink-0">
-                        <button onclick="toggleAll(true)" class="flex-1 text-xs bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded border border-indigo-200 text-indigo-700 transition font-medium">전체 선택</button>
-                        <button onclick="toggleAll(false)" class="flex-1 text-xs bg-white hover:bg-slate-50 px-4 py-2 rounded border border-slate-300 text-slate-600 transition font-medium">전체 해제</button>
+                    <div class="flex gap-2 shrink-0 flex-wrap md:flex-nowrap">
+                        <div class="flex gap-1">
+                            <button onclick="toggleAll(true)" class="text-xs bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded border border-indigo-200 text-indigo-700 transition font-medium whitespace-nowrap">
+                                전체 선택
+                            </button>
+                            <button onclick="toggleAll(false)" class="text-xs bg-white hover:bg-slate-50 px-3 py-2 rounded border border-slate-300 text-slate-600 transition font-medium whitespace-nowrap">
+                                전체 해제
+                            </button>
+                        </div>
+
+                        <div class="w-px bg-slate-300 mx-1 hidden md:block"></div> <div class="flex gap-1">
+                            <button onclick="addMercenary('남')" class="text-xs bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded border border-blue-200 text-blue-700 transition font-medium flex items-center whitespace-nowrap">
+                                <i class="fa-solid fa-plus mr-1"></i>남자 용병
+                            </button>
+                            <button onclick="addMercenary('여')" class="text-xs bg-pink-50 hover:bg-pink-100 px-3 py-2 rounded border border-pink-200 text-pink-700 transition font-medium flex items-center whitespace-nowrap">
+                                <i class="fa-solid fa-plus mr-1"></i>여자 용병
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -181,7 +196,8 @@
     <script>
         let allData = [];
         let currentTeams = []; // To store the latest result for image export
-        
+        let mercCounts = { '남': 0, '여': 0 };
+
         // 1. File Parsing Logic
         document.getElementById('fileInput').addEventListener('change', handleFile, false);
 
@@ -239,6 +255,71 @@
                 }, 100);
             };
             reader.readAsArrayBuffer(file);
+        }
+
+        function addMercenary(gender) {
+            // 1. 이름 생성 (A, B, C...)
+            const count = mercCounts[gender]++;
+            const suffix = String.fromCharCode(65 + count); // 0=A, 1=B, 2=C ...
+            const name = `${gender}자 용병 ${suffix}`; // 예: 남자 용병 A
+            
+            // 2. 평점 설정 (남:4, 여:2)
+            const rating = gender === '남' ? 4.0 : 2.0;
+            const genderText = gender === '남' ? '남' : '여'; // 데이터 일관성
+
+            // 3. 새 ID 생성 (기존 최대 ID + 1)
+            const maxId = allData.length > 0 ? Math.max(...allData.map(m => m.id)) : -1;
+            const newId = maxId + 1;
+
+            // 4. 데이터 추가 (기본적으로 '참석' 체크됨)
+            const newMember = {
+                id: newId,
+                name: name,
+                gender: genderText,
+                rating: rating,
+                checked: true
+            };
+
+            allData.push(newMember);
+
+            // 5. 테이블 다시 그리기
+            renderTable();
+            
+            // 6. 스크롤을 맨 아래로 이동 (추가된거 보이게)
+            setTimeout(() => {
+                const tableContainer = document.querySelector('.overflow-y-auto');
+                tableContainer.scrollTop = tableContainer.scrollHeight;
+            }, 50);
+        }
+
+        // [수정] 용병 추가 함수
+        function addMercenary(gender) {
+            const count = mercCounts[gender]++;
+            const suffix = String.fromCharCode(65 + count);
+            const name = `${gender}자 용병 ${suffix}`;
+            
+            const rating = gender === '남' ? 4.0 : 2.0;
+            const genderText = gender === '남' ? '남' : '여';
+
+            const maxId = allData.length > 0 ? Math.max(...allData.map(m => m.id)) : -1;
+            const newId = maxId + 1;
+
+            const newMember = {
+                id: newId,
+                name: name,
+                gender: genderText,
+                rating: rating,
+                checked: true,
+                isMercenary: true // [핵심] 이 멤버는 용병임을 표시!
+            };
+
+            allData.push(newMember);
+            renderTable();
+            
+            setTimeout(() => {
+                const tableContainer = document.querySelector('.overflow-y-auto');
+                tableContainer.scrollTop = tableContainer.scrollHeight;
+            }, 50);
         }
 
         // 2. UI Rendering
@@ -365,13 +446,16 @@
             return array;
         }
 
+        // [수정] 용병 균등 분배 로직이 포함된 시뮬레이션 함수
         function simulateOneRound(malesList, femalesList, teamCount) {
+            // 1. 멤버 리스트 셔플 (랜덤성 확보)
             const shuffledMales = shuffleArray([...malesList]);
             const shuffledFemales = shuffleArray([...femalesList]);
 
             const maleSlots = getSlots(shuffledMales.length, teamCount);
             const femaleSlots = getSlots(shuffledFemales.length, teamCount);
 
+            // 2. 팀 생성 (용병 카운트 속성 추가)
             let teams = Array.from({ length: teamCount }, (_, i) => ({
                 id: i,
                 name: String.fromCharCode(65 + i) + "팀", 
@@ -380,42 +464,76 @@
                 males: 0,
                 females: 0,
                 maxMales: maleSlots[i],
-                maxFemales: femaleSlots[i]
+                maxFemales: femaleSlots[i],
+                mercCount: 0 // [추가] 해당 팀에 용병이 몇 명 있는지 체크
             }));
 
+            // 3. 팀 순서 섞기 (A팀 쏠림 방지)
             shuffleArray(teams);
 
+            // [핵심 로직] 그룹 분배 함수
             function distributeGroup(group, isFemaleGroup) {
-                const noisyList = group.map(m => ({
+                // 4. 용병(Mercenaries)과 일반인(Regulars) 분리
+                const mercs = group.filter(m => m.isMercenary);
+                const regulars = group.filter(m => !m.isMercenary);
+
+                // 일반인에게만 노이즈(랜덤 점수) 적용하여 줄 세우기
+                // (용병은 점수가 고정이라 굳이 노이즈 안 줘도 됨, 어차피 인원수로 배분할 것이므로)
+                const noisyRegulars = regulars.map(m => ({
                     ...m,
                     noisyRating: m.rating + (Math.random() - 0.5) * 2.0 
-                }));
+                })).sort((a, b) => b.noisyRating - a.noisyRating);
 
-                noisyList.sort((a, b) => b.noisyRating - a.noisyRating);
+                const sortedRegulars = noisyRegulars.map(m => {
+                    const clean = { ...m };
+                    delete clean.noisyRating;
+                    return clean;
+                });
 
-                noisyList.forEach(wrapper => {
-                    const member = { ...wrapper };
-                    delete member.noisyRating; 
-
+                // 5. 배정 함수 (공통)
+                const assignToTeam = (member, isMercenaryStep) => {
+                    // 정원이 남은 팀 필터링
                     const validTeams = teams.filter(t => {
                         if(isFemaleGroup) return t.females < t.maxFemales;
                         else return t.males < t.maxMales;
                     });
 
-                    validTeams.sort((a, b) => a.totalRating - b.totalRating);
-                    
+                    if (validTeams.length === 0) return; // 들어갈 곳이 없으면 패스 (예외처리)
+
+                    // 정렬 기준 설정
+                    validTeams.sort((a, b) => {
+                        if (isMercenaryStep) {
+                            // [용병 배정 단계]
+                            // 1순위: 용병 숫자가 적은 팀 우선! (골고루 퍼지게)
+                            // 2순위: 용병 수가 같다면 점수가 낮은 팀 우선
+                            if (a.mercCount !== b.mercCount) return a.mercCount - b.mercCount;
+                            return a.totalRating - b.totalRating;
+                        } else {
+                            // [일반인 배정 단계]
+                            // 점수가 낮은 팀 우선 (기존 로직)
+                            return a.totalRating - b.totalRating;
+                        }
+                    });
+
                     const targetTeam = validTeams[0];
 
                     targetTeam.members.push(member);
                     targetTeam.totalRating += member.rating;
                     if(isFemaleGroup) targetTeam.females++;
                     else targetTeam.males++;
-                });
+                    
+                    if(isMercenaryStep) targetTeam.mercCount++; // 용병 카운트 증가
+                };
+
+                // **중요**: 용병 먼저 배정하고, 그 뒤에 일반인 배정
+                mercs.forEach(m => assignToTeam(m, true));
+                sortedRegulars.forEach(m => assignToTeam(m, false));
             }
 
             distributeGroup(shuffledFemales, true);
             distributeGroup(shuffledMales, false);
 
+            // 결과 보여줄 땐 다시 이름순(A, B, C) 정렬
             teams.sort((a, b) => a.id - b.id);
 
             return teams;
@@ -497,33 +615,48 @@
         async function downloadImage() {
             if (!currentTeams || currentTeams.length === 0) return;
 
-            // Create a temporary container for the capture
             const exportContainer = document.createElement('div');
             exportContainer.style.width = '1080px';
-            exportContainer.style.minHeight = '720px'; // Allow it to grow if list is super long
+            exportContainer.style.minHeight = '720px';
             exportContainer.style.position = 'fixed';
             exportContainer.style.left = '-9999px';
             exportContainer.style.top = '0';
-            exportContainer.style.backgroundColor = '#ffffff'; // Changed to white
-            exportContainer.style.padding = '0'; // Changed padding to 0 to remove grey border
+            exportContainer.style.backgroundColor = '#ffffff';
+            exportContainer.style.padding = '0';
             exportContainer.style.display = 'flex';
             exportContainer.style.flexDirection = 'column';
             exportContainer.style.boxSizing = 'border-box';
 
-            // Header
-            const today = new Date().toLocaleDateString('ko-KR', {year: 'numeric', month: 'long', day: 'numeric'});
+            // 날짜 생성
+            const now = new Date();
+            const dateText = now.toLocaleString('ko-KR', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+
             let html = `
                 <div style="text-align: center; margin: 40px 0;">
                     <h1 style="font-size: 48px; font-weight: bold; color: #334155; margin: 0;">팀 편성 결과</h1>
-                    <p style="font-size: 24px; color: #64748b; margin-top: 10px;">${today}</p>
+                    <p style="font-size: 24px; color: #64748b; margin-top: 10px;">${dateText}</p>
                 </div>
                 <div style="display: flex; gap: 30px; flex: 1; align-items: flex-start; padding: 0 40px 40px 40px;">
             `;
             
-            // Team Cards
             currentTeams.forEach(team => {
-                // Sort by name for image export
-                team.members.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+                // [수정된 정렬 로직] 일반 멤버 먼저, 용병은 아래로
+                team.members.sort((a, b) => {
+                    const isMercA = !!a.isMercenary;
+                    const isMercB = !!b.isMercenary;
+
+                    if (isMercA !== isMercB) {
+                        return isMercA ? 1 : -1; // 용병이 뒤로 감
+                    }
+                    return a.name.localeCompare(b.name, 'ko');
+                });
                 
                 html += `
                     <div style="flex: 1; background: white; border-radius: 20px; overflow: hidden; border: 2px solid #668ffe;">
@@ -537,8 +670,11 @@
 
                 team.members.forEach(m => {
                     const isFemale = m.gender.includes('여') || m.gender === 'F';
-                    const genderColor = isFemale ? '#ec4899' : '#3b82f6'; // Pink / Blue
+                    const genderColor = isFemale ? '#ec4899' : '#3b82f6'; 
                     const genderBg = isFemale ? '#fdf2f8' : '#eff6ff';
+                    
+                    // 용병은 시각적으로 살짝 다르게 표시하고 싶다면 배경색 등을 여기서 조정 가능
+                    // 현재는 일반 멤버와 동일한 디자인 유지
                     
                     html += `
                         <li style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #8c8c8c; font-size: 20px; background: white;">
@@ -559,15 +695,13 @@
             exportContainer.innerHTML = html;
             document.body.appendChild(exportContainer);
 
-            // Capture
             try {
                 const canvas = await html2canvas(exportContainer, {
-                    scale: 1, // 1:1 scale for 1080px
+                    scale: 1,
                     useCORS: true,
-                    backgroundColor: '#ffffff' // Changed to white
+                    backgroundColor: '#ffffff'
                 });
 
-                // Trigger Download
                 const link = document.createElement('a');
                 link.download = `Team_Result_${Date.now()}.png`;
                 link.href = canvas.toDataURL('image/png');
