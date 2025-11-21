@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>스포츠 팀 자동 생성기</title>
+    <title>풋그리나 팀나누기</title>
     
     <!-- Tailwind CSS (Design) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -172,7 +172,7 @@
     </main>
 
     <footer class="bg-slate-800 text-slate-400 text-center py-6 text-sm mt-auto">
-        <p>&copy; 2024 Sports Team Balancer. Optimized by Monte Carlo Simulation.</p>
+        <p>2025.11.21</p>
     </footer>
 
     <!-- Javascript Logic -->
@@ -355,9 +355,20 @@
             renderTeams(bestResult, minDifference);
         }
 
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
         function simulateOneRound(malesList, femalesList, teamCount) {
-            const maleSlots = getSlots(malesList.length, teamCount);
-            const femaleSlots = getSlots(femalesList.length, teamCount);
+            const shuffledMales = shuffleArray([...malesList]);
+            const shuffledFemales = shuffleArray([...femalesList]);
+
+            const maleSlots = getSlots(shuffledMales.length, teamCount);
+            const femaleSlots = getSlots(shuffledFemales.length, teamCount);
 
             let teams = Array.from({ length: teamCount }, (_, i) => ({
                 id: i,
@@ -370,6 +381,8 @@
                 maxFemales: femaleSlots[i]
             }));
 
+            shuffleArray(teams);
+
             function distributeGroup(group, isFemaleGroup) {
                 const noisyList = group.map(m => ({
                     ...m,
@@ -380,7 +393,7 @@
 
                 noisyList.forEach(wrapper => {
                     const member = { ...wrapper };
-                    delete member.noisyRating; // clean up
+                    delete member.noisyRating; 
 
                     const validTeams = teams.filter(t => {
                         if(isFemaleGroup) return t.females < t.maxFemales;
@@ -388,6 +401,7 @@
                     });
 
                     validTeams.sort((a, b) => a.totalRating - b.totalRating);
+                    
                     const targetTeam = validTeams[0];
 
                     targetTeam.members.push(member);
@@ -397,8 +411,10 @@
                 });
             }
 
-            distributeGroup(femalesList, true);
-            distributeGroup(malesList, false);
+            distributeGroup(shuffledFemales, true);
+            distributeGroup(shuffledMales, false);
+
+            teams.sort((a, b) => a.id - b.id);
 
             return teams;
         }
