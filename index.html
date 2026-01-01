@@ -5,666 +5,564 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>풋그리나 팀나누기</title>
     
+    <!-- External Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    
+    <script src="https://unpkg.com/tesseract.js@v4.0.1/dist/tesseract.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
-        body { font-family: 'Noto Sans KR', sans-serif; }
-        .fade-in { animation: fadeIn 0.5s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f8fafc; }
+        .loading-spinner { border-top-color: #4f46e5; animation: spinner 0.6s linear infinite; }
+        @keyframes spinner { to { transform: rotate(360deg); } }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+<body class="pb-20">
 
-    <header class="bg-indigo-600 text-white shadow-lg">
-        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-            <h1 class="text-xl font-bold flex items-center gap-2">
-                <i class="fa-solid fa-people-group"></i> 팀 밸런서
+    <nav class="bg-indigo-600 text-white shadow-lg p-4 mb-6">
+        <div class="max-w-5xl mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center">
+                팀 밸런서
             </h1>
-            <div class="text-sm text-indigo-200">풋그리나 ⚽</div>
+            <img src="logo.png" alt="Logo" style="height: 36px; width: auto; object-fit: contain;" onerror="this.style.display='none'">
         </div>
-    </header>
+    </nav>
 
-    <main class="flex-grow container mx-auto px-4 py-8 max-w-5xl">
-        
-        <div class="bg-white rounded-xl shadow-md p-6 mb-6">
-            <h2 class="text-lg font-semibold mb-4 border-b pb-2 text-indigo-700">
-                <i class="fa-solid fa-gear mr-2"></i>설정 및 데이터 불러오기
-            </h2>
-            
-            <div class="grid md:grid-cols-2 gap-6">
+    <main class="max-w-5xl mx-auto px-4">
+        <section class="grid md:grid-cols-2 gap-6 mb-8 items-start">
+            <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
+                <h2 class="text-lg font-semibold mb-4 border-b pb-2 text-indigo-700">
+                    <i class="fa-solid fa-magnifying-glass"></i> 데이터 불러오기
+                </h2>
+                <label id="dropZone" class="relative border-2 border-dashed border-indigo-200 rounded-xl p-6 text-center hover:bg-indigo-50 transition cursor-pointer block">
+                    <input type="file" id="fileInput" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                    <div class="text-indigo-500 text-3xl mb-2"><i class="fa-solid fa-file-arrow-up"></i></div>
+                    <p class="text-sm text-slate-500">엑셀 파일 업로드 (.xlsx)</p>
+                    <p class="text-xs text-slate-400 mt-1">필수 열: 이름, 성별(남/여), 평점</p>
+                </label>
+            </div>
+
+            <div id="rightSection" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-6">
+                    <h2 class="text-lg font-semibold mb-4 border-b pb-2 text-indigo-700">
+                        <i class="fa-solid fa-user-check mr-2"></i>참석 멤버 선택
+                    </h2>
+                    
+                    <label id="ocrZone" class="relative border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:bg-slate-50 transition cursor-pointer block opacity-50 cursor-not-allowed mb-4">
+                        <input type="file" id="ocrInput" accept="image/*" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled>
+                        <div id="ocrIcon" class="text-slate-400 text-3xl mb-2"><i class="fa-solid fa-camera-retro"></i></div>
+                        <p id="ocrText" class="text-xs text-slate-400 font-medium">명단을 먼저 불러와주세요</p>
+                    </label>
+
+                    <div id="memberContainer" class="hidden space-y-4">
+                        <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            <div class="flex flex-wrap justify-between items-center gap-3 mb-3">
+                                <div class="flex items-center gap-2">
+                                    <h2 class="font-bold text-slate-800 text-sm">참석 명단</h2>
+                                    <span class="bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">
+                                        총 <span id="selectedCount">0</span>명
+                                    </span>
+                                </div>
+                                
+                                <div class="flex gap-1 flex-wrap">
+                                    <button onclick="toggleAll(true)" class="text-[10px] bg-white hover:bg-indigo-50 px-2 py-1 rounded border border-indigo-200 text-indigo-700 font-bold transition">전체 선택</button>
+                                    <button onclick="toggleAll(false)" class="text-[10px] bg-white hover:bg-slate-50 px-2 py-1 rounded border border-slate-300 text-slate-600 font-bold transition">전체 해제</button>
+                                    <button onclick="addMercenary('남')" class="text-[10px] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded border border-blue-200 text-blue-700 font-bold transition">+ 남 용병</button>
+                                    <button onclick="addMercenary('여')" class="text-[10px] bg-pink-50 hover:bg-pink-100 px-2 py-1 rounded border border-pink-200 text-pink-700 font-bold transition">+ 여 용병</button>
+                                </div>
+                            </div>
+
+                            <div class="relative">
+                                <input type="text" id="searchInput" oninput="handleSearch(this.value)" placeholder="이름 검색..." 
+                                    class="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-[10px]"></i>
+                            </div>
+                        </div>
+
+                        <div id="attendeeDisplay" class="bg-slate-100/50 p-3 rounded-xl border border-slate-200 min-h-[50px] flex flex-wrap gap-2 items-start content-start transition-all">
+                            <span class="text-slate-400 text-[11px] italic py-1">참석자를 선택하세요...</span>
+                        </div>
+
+                        <div class="overflow-y-auto max-h-[300px] border rounded-xl border-slate-100">
+                            <table class="w-full text-left">
+                                <thead class="bg-slate-50 text-slate-500 text-[10px] uppercase sticky top-0 z-10">
+                                    <tr>
+                                        <th class="px-3 py-2 w-12 text-center">참석</th>
+                                        <th class="px-3 py-2">성함</th>
+                                        <th class="px-3 py-2 w-14 text-center">성별</th>
+                                        <th class="px-3 py-2 w-14 text-center">평점</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="memberList" class="divide-y divide-slate-100 text-[13px]">
+                                </tbody>
+                            </table>
+                            <div id="noResultMsg" class="hidden text-center py-8 text-slate-400 text-xs">
+                                검색 결과가 없습니다.
+                            </div>
+                        </div>
+
+                        <div class="pt-2 space-y-3">
+                            <select id="teamCount" class="w-full p-3 rounded-xl border-2 border-indigo-200 font-bold text-indigo-700 focus:border-indigo-500 focus:outline-none transition text-sm">
+                                <option value="2" style="text-align: center;">2개 팀으로 분할</option>
+                                <option value="3" style="text-align: center;">3개 팀으로 분할</option>
+                            </select>
+                            <button onclick="generateTeams()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg transition transform hover:scale-[1.01] active:scale-95 flex justify-center items-center gap-2">
+                                <span>팀 편성 실행</span>
+                                <i class="fa-solid fa-shuffle"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="resultSection" class="hidden space-y-6">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 border-b pb-4 border-slate-300">
                 <div>
-                    <label class="block text-sm font-medium text-slate-600 mb-2">엑셀 파일 선택 (.xlsx)</label>
-                    <div class="relative border-2 border-dashed border-indigo-200 rounded-lg p-6 text-center hover:bg-indigo-50 transition cursor-pointer" id="dropZone">
-                        <input type="file" id="fileInput" 
-                            accept=".xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" 
-                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
-                        <div class="text-indigo-500 text-4xl mb-2"><i class="fa-solid fa-file-excel"></i></div>
-                        <p class="text-sm text-slate-500">엑셀 파일을 이곳에 드래그하거나 클릭하세요</p>
-                        <p class="text-xs text-slate-400 mt-1">필수 열: 이름, 성별(남/여), 평점</p>
-                    </div>
+                    <h2 class="text-2xl font-black text-slate-800">배정 결과</h2>
+                    <p id="balanceBadge" class="inline-block mt-1 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[11px] font-bold"></p>
                 </div>
-
-                <div class="flex flex-col justify-center space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-2">팀 개수 설정</label>
-                        <div class="flex space-x-4">
-                            <label class="flex items-center space-x-2 cursor-pointer bg-slate-100 px-4 py-2 rounded-lg hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition">
-                                <input type="radio" name="teamCount" value="2" checked class="text-indigo-600 focus:ring-indigo-500">
-                                <span class="font-medium">두 팀</span>
-                            </label>
-                            <label class="flex items-center space-x-2 cursor-pointer bg-slate-100 px-4 py-2 rounded-lg hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition">
-                                <input type="radio" name="teamCount" value="3" class="text-indigo-600 focus:ring-indigo-500">
-                                <span class="font-medium">세 팀</span>
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-yellow-50 p-3 rounded-lg border border-yellow-100 text-xs text-yellow-700">
-                        <i class="fa-solid fa-circle-info mr-1"></i>
-                        성별 비율과 평점 총합을 자동으로 맞추며, 실행 시마다 약간의 랜덤성이 부여됩니다.
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="memberSection" class="hidden bg-white rounded-xl shadow-md p-6 mb-6 fade-in">
-            <div class="flex flex-col justify-start mb-4 border-b pb-4 gap-2">
-                <h2 class="text-lg font-semibold text-indigo-700 whitespace-nowrap">
-                    <i class="fa-solid fa-user-check mr-2"></i>참석 멤버 선택
-                    <span id="memberCountBadge" class="ml-2 bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full">0명</span>
-                </h2>
-                
-                <div id="selectedNamesDisplay" class="text-sm font-medium text-blue-600 w-full min-h-[1.5rem]">
-                </div>
-            </div>
-
-            <div class="flex flex-col md:flex-row justify-between items-end md:items-center mb-4 gap-4">
-                <div class="flex w-full md:w-auto gap-2 flex-col md:flex-row">
-                    <div class="relative w-full md:w-64">
-                        <input type="text" id="searchInput" placeholder="이름 검색..." class="w-full pl-10 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition shadow-sm">
-                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-xs"></i>
-                    </div>
-                    
-                    <div class="flex gap-2 shrink-0 flex-wrap md:flex-nowrap">
-                        <div class="flex gap-1">
-                            <button onclick="toggleAll(true)" class="text-xs bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded border border-indigo-200 text-indigo-700 transition font-medium whitespace-nowrap">
-                                전체 선택
-                            </button>
-                            <button onclick="toggleAll(false)" class="text-xs bg-white hover:bg-slate-50 px-3 py-2 rounded border border-slate-300 text-slate-600 transition font-medium whitespace-nowrap">
-                                전체 해제
-                            </button>
-                        </div>
-
-                        <div class="w-px bg-slate-300 mx-1 hidden md:block"></div> <div class="flex gap-1">
-                            <button onclick="addMercenary('남')" class="text-xs bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded border border-blue-200 text-blue-700 transition font-medium flex items-center whitespace-nowrap">
-                                <i class="fa-solid fa-plus mr-1"></i>남자 용병
-                            </button>
-                            <button onclick="addMercenary('여')" class="text-xs bg-pink-50 hover:bg-pink-100 px-3 py-2 rounded border border-pink-200 text-pink-700 transition font-medium flex items-center whitespace-nowrap">
-                                <i class="fa-solid fa-plus mr-1"></i>여자 용병
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="overflow-y-auto max-h-96 border rounded-lg relative bg-slate-50">
-                <table class="w-full text-sm text-left text-slate-600">
-                    <thead class="text-xs text-slate-700 uppercase bg-slate-100 sticky top-0 shadow-sm z-10">
-                        <tr>
-                            <th scope="col" class="px-6 py-3 w-16 text-center">참석</th>
-                            <th scope="col" class="px-6 py-3">이름</th>
-                            <th scope="col" class="px-6 py-3 text-center">성별</th>
-                            <th scope="col" class="px-6 py-3 text-center">평점</th>
-                        </tr>
-                    </thead>
-                    <tbody id="memberTableBody" class="bg-white divide-y divide-slate-100">
-                    </tbody>
-                </table>
-                <div id="noResultMsg" class="hidden p-8 text-center text-slate-400 text-sm">
-                    검색 결과가 없습니다.
-                </div>
-            </div>
-
-            <div class="mt-6 text-center">
-                <p class="text-xs text-slate-500 mb-2">
-                    <i class="fa-solid fa-check text-indigo-500"></i> 선택된 인원만으로 팀 밸런싱을 진행합니다.
-                </p>
-                <button onclick="generateTeams()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-10 rounded-full shadow-lg transform transition hover:-translate-y-1 active:translate-y-0 flex items-center justify-center mx-auto gap-2 text-lg">
-                    <i class="fa-solid fa-shuffle"></i> 팀 편성 실행
+                <button onclick="downloadImage()" class="bg-slate-900 hover:bg-black text-white px-5 py-3 rounded-xl font-bold transition flex items-center justify-center shadow-md">
+                    <i class="fa-solid fa-image mr-2"></i> 결과 이미지 저장
                 </button>
             </div>
-        </div>
-
-        <div id="resultSection" class="hidden fade-in pb-10">
-            <div class="flex justify-between items-center mb-6">
-                 <h2 class="text-2xl font-bold text-slate-800 flex items-center">
-                    <i class="fa-solid fa-trophy text-yellow-500 mr-2"></i>팀 편성 결과
-                </h2>
-                <div id="balanceBadge" class="bg-green-100 text-green-800 text-xs px-3 py-1 rounded-full font-bold border border-green-200">
-                </div>
-            </div>
-           
-            <div id="teamsContainer" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            </div>
-            
-            <div class="flex flex-col sm:flex-row justify-center items-center gap-4 mt-4">
-                <button onclick="generateTeams()" class="px-6 py-2 border border-indigo-600 text-indigo-600 rounded-lg hover:bg-indigo-50 transition flex items-center gap-2">
-                    <i class="fa-solid fa-rotate-right"></i> 다시 돌리기
-                </button>
-                
-                <button onclick="downloadImage()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md transition flex items-center gap-2">
-                    <i class="fa-solid fa-image"></i> 이미지 저장 (이름+성별)
-                </button>
-            </div>
-        </div>
-
+            <div id="teamsContainer"></div>
+        </section>
     </main>
-
-    <footer class="bg-slate-800 text-slate-400 text-center py-6 text-sm mt-auto">
-        <p>2025.11.21</p>
-    </footer>
 
     <script>
         let allData = [];
         let currentTeams = [];
         let mercCounts = { '남': 0, '여': 0 };
+        let currentSearchTerm = "";
 
-        document.getElementById('fileInput').addEventListener('change', handleFile, false);
+        document.getElementById('fileInput').addEventListener('change', handleExcelUpload);
 
-        document.getElementById('searchInput').addEventListener('input', function(e) {
-            const term = e.target.value.toLowerCase();
-            const rows = document.querySelectorAll('#memberTableBody tr');
-            let hasVisible = false;
-            
-            rows.forEach(row => {
-                const name = row.querySelector('.member-name').textContent.toLowerCase();
-                if (name.includes(term)) {
-                    row.classList.remove('hidden');
-                    hasVisible = true;
-                } else {
-                    row.classList.add('hidden');
-                }
-            });
-
-            const msg = document.getElementById('noResultMsg');
-            if(!hasVisible && rows.length > 0) msg.classList.remove('hidden');
-            else msg.classList.add('hidden');
-        });
-
-        function handleFile(e) {
+        function handleExcelUpload(e) {
             const file = e.target.files[0];
-            const reader = new FileReader();
+            if (!file) return;
 
-            reader.onload = function(e) {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, {type: 'array'});
-                
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
-                
-                if (jsonData.length === 0) {
-                    alert("데이터가 비어있습니다.");
-                    return;
-                }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const data = new Uint8Array(event.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
 
                 allData = jsonData.map((row, index) => {
-                    const name = row['이름'] || row['Name'] || row['name'] || `Member ${index}`;
-                    
-                    let rawGender = row['성별'] || row['Gender'] || row['sex'] || '남';
+                    const name = (row['이름'] || row['Name'] || row['성함'] || "").toString().trim();
+                    let rawGender = row['성별'] || row['Gender'] || '남';
                     let strGender = String(rawGender).trim().toUpperCase();
-                    
                     const gender = (strGender.startsWith('F') || strGender.includes('여')) ? '여' : '남';
+                    const rating = parseFloat(row['평점'] || row['Rating'] || 0);
 
-                    const rating = parseFloat(row['평점'] || row['Rating'] || row['score'] || 0);
-                    
                     return { id: index, name, gender, rating, checked: false, isMercenary: false };
-                });
+                }).filter(m => m.name !== "");
 
+                document.getElementById('memberContainer').classList.remove('hidden');
+                enableOCR();
                 renderTable();
-                document.getElementById('memberSection').classList.remove('hidden');
-                
-                setTimeout(() => {
-                    document.getElementById('memberSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 100);
             };
             reader.readAsArrayBuffer(file);
         }
 
-        function addMercenary(gender) {
-            const count = mercCounts[gender]++;
-            const suffix = String.fromCharCode(65 + count);
-            const name = `${gender}자 용병 ${suffix}`;
-            
-            const rating = gender === '남' ? 4.0 : 2.0;
-            const genderText = gender === '남' ? '남' : '여';
+        function enableOCR() {
+            const zone = document.getElementById('ocrZone');
+            const input = document.getElementById('ocrInput');
+            const text = document.getElementById('ocrText');
+            const icon = document.getElementById('ocrIcon');
 
-            const maxId = allData.length > 0 ? Math.max(...allData.map(m => m.id)) : -1;
-            const newId = maxId + 1;
-
-            const newMember = {
-                id: newId,
-                name: name,
-                gender: genderText,
-                rating: rating,
-                checked: true
-            };
-
-            allData.push(newMember);
-
-            renderTable();
-            
-            setTimeout(() => {
-                const tableContainer = document.querySelector('.overflow-y-auto');
-                tableContainer.scrollTop = tableContainer.scrollHeight;
-            }, 50);
+            zone.classList.remove('opacity-50', 'cursor-not-allowed', 'border-slate-200');
+            zone.classList.add('border-emerald-400', 'bg-emerald-50/30');
+            input.disabled = false;
+            text.innerText = "여러 장의 캡처 이미지 선택";
+            text.classList.replace('text-slate-400', 'text-emerald-700');
+            icon.classList.replace('text-slate-400', 'text-emerald-500');
         }
 
+        document.getElementById('ocrInput').addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (!files.length || allData.length === 0) return;
+
+            const textElem = document.getElementById('ocrText');
+            const iconElem = document.getElementById('ocrIcon');
+            const originalText = textElem.innerText;
+
+            textElem.innerText = "OCR 엔진 초기화 중...";
+            iconElem.innerHTML = '<i class="fa-solid fa-spinner loading-spinner text-emerald-500"></i>';
+
+            try {
+                let totalFound = 0;
+                let foundNamesSet = new Set();
+
+                for (let i = 0; i < files.length; i++) {
+                    textElem.innerText = `분석 중 (${i + 1}/${files.length})...`;
+                    
+                    const { data: { text } } = await Tesseract.recognize(
+                        files[i],
+                        'kor',
+                        { logger: m => {
+                            if(m.status === 'recognizing text') {
+                                const progress = Math.round(m.progress * 100);
+                                textElem.innerText = `이미지 ${i+1} 분석: ${progress}%`;
+                            }
+                        }}
+                    );
+                    
+                    const normalizedText = text.replace(/\s/g, '');
+
+                    allData.forEach(member => {
+                        if (normalizedText.includes(member.name)) {
+                            if (!member.checked) {
+                                member.checked = true;
+                                totalFound++;
+                            }
+                            foundNamesSet.add(member.name);
+                        }
+                    });
+                }
+
+                renderTable();
+                alert(`분석 완료!\n총 ${foundNamesSet.size}명의 이름을 인식하였으며, 새롭게 ${totalFound}명을 체크했습니다.`);
+                
+                textElem.innerText = "추가 분석 가능 (기존 체크 유지됨)";
+                iconElem.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
+
+            } catch (err) {
+                console.error("OCR Error:", err);
+                alert("이미지 분석 중 엔진 오류가 발생했습니다.");
+                textElem.innerText = originalText;
+                iconElem.innerHTML = '<i class="fa-solid fa-camera-retro"></i>';
+            }
+        });
+
         function addMercenary(gender) {
             const count = mercCounts[gender]++;
             const suffix = String.fromCharCode(65 + count);
             const name = `${gender}자 용병 ${suffix}`;
-            
-            const rating = gender === '남' ? 4.0 : 2.0;
-            const genderText = gender === '남' ? '남' : '여';
-
+            const rating = gender === '남' ? 4.0 : 2.5;
             const maxId = allData.length > 0 ? Math.max(...allData.map(m => m.id)) : -1;
-            const newId = maxId + 1;
 
-            const newMember = {
-                id: newId,
-                name: name,
-                gender: genderText,
-                rating: rating,
-                checked: true,
-                isMercenary: true
-            };
-
-            allData.push(newMember);
-            renderTable();
+            allData.push({ id: maxId + 1, name, gender, rating, checked: true, isMercenary: true });
             
-            setTimeout(() => {
-                const tableContainer = document.querySelector('.overflow-y-auto');
-                tableContainer.scrollTop = tableContainer.scrollHeight;
-            }, 50);
+            document.getElementById('searchInput').value = '';
+            currentSearchTerm = '';
+            
+            renderTable();
+        }
+
+        function toggleAll(bool) {
+            if (currentSearchTerm) {
+                allData.forEach(m => {
+                    if (m.name.includes(currentSearchTerm)) m.checked = bool;
+                });
+            } else {
+                allData.forEach(m => m.checked = bool);
+            }
+            renderTable();
+        }
+
+        function handleSearch(val) {
+            currentSearchTerm = val.trim();
+            renderTable();
         }
 
         function renderTable() {
-            const tbody = document.getElementById('memberTableBody');
-            tbody.innerHTML = '';
-            
-            allData.forEach(member => {
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-indigo-50 transition-colors";
-                const genderClass = (member.gender.includes('여') || member.gender === 'F') ? 'text-pink-500 bg-pink-50 border-pink-100' : 'text-blue-500 bg-blue-50 border-blue-100';
-                const isChecked = member.checked ? 'checked' : '';
+            const tbody = document.getElementById('memberList');
+            const noResultMsg = document.getElementById('noResultMsg');
 
-                tr.innerHTML = `
-                    <td class="px-6 py-3 text-center">
-                        <input type="checkbox" ${isChecked} class="member-checkbox w-5 h-5 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer transition" data-id="${member.id}">
-                    </td>
-                    <td class="px-6 py-3 font-medium text-slate-900 member-name cursor-pointer select-none" onclick="toggleRow(${member.id})">${member.name}</td>
-                    <td class="px-6 py-3 text-center">
-                        <span class="${genderClass} border px-2 py-1 rounded text-xs font-bold shadow-sm">${member.gender}</span>
-                    </td>
-                    <td class="px-6 py-3 text-center font-mono font-semibold text-slate-600">${member.rating}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-            updateCount();
+            const filteredData = currentSearchTerm 
+                ? allData.filter(m => m.name.includes(currentSearchTerm)) 
+                : allData;
 
-            document.querySelectorAll('.member-checkbox').forEach(box => {
-                box.addEventListener('change', (e) => {
-                    const id = parseInt(e.target.getAttribute('data-id'));
-                    updateMemberStatus(id, e.target.checked);
-                });
-            });
-        }
-
-        function toggleRow(id) {
-            const checkbox = document.querySelector(`.member-checkbox[data-id="${id}"]`);
-            if(checkbox) {
-                checkbox.checked = !checkbox.checked;
-                updateMemberStatus(id, checkbox.checked);
-            }
-        }
-
-        function updateMemberStatus(id, status) {
-            const member = allData.find(m => m.id === id);
-            if(member) member.checked = status;
-            updateCount();
-        }
-
-        function updateSelectedNamesDisplay() {
-            const selected = allData.filter(m => m.checked).map(m => m.name);
-            const displayElement = document.getElementById('selectedNamesDisplay');
-            
-            if (selected.length > 0) {
-                displayElement.innerHTML = selected.join('<span class="text-slate-400 mx-1">/</span>');
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '';
+                noResultMsg.classList.remove('hidden');
             } else {
-                displayElement.textContent = "선택된 멤버가 없습니다.";
+                noResultMsg.classList.add('hidden');
+                tbody.innerHTML = filteredData.map(m => `
+                    <tr class="hover:bg-slate-50 transition ${m.checked ? 'bg-indigo-50/50' : ''}">
+                        <td class="px-3 py-2 text-center">
+                            <input type="checkbox" ${m.checked ? 'checked' : ''} 
+                                onchange="updateChecked(${m.id}, this.checked)"
+                                class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition">
+                        </td>
+                        <td class="px-3 py-2 font-bold ${m.isMercenary ? 'text-indigo-600 italic' : 'text-slate-700'}">
+                            ${m.name}
+                        </td>
+                        <td class="px-3 py-2 text-center">
+                            <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${m.gender === '여' ? 'bg-pink-100 text-pink-600' : 'bg-blue-100 text-blue-600'}">
+                                ${m.gender}
+                            </span>
+                        </td>
+                        <td class="px-3 py-2 text-center font-mono text-slate-400 text-[11px]">${m.rating.toFixed(1)}</td>
+                    </tr>
+                `).join('');
             }
+
+            const attendeeDisplay = document.getElementById('attendeeDisplay');
+            const selectedMembers = allData.filter(m => m.checked);
+            
+            if (selectedMembers.length === 0) {
+                attendeeDisplay.innerHTML = `<span class="text-slate-400 text-[11px] italic py-1">참석자를 선택하세요...</span>`;
+            } else {
+                attendeeDisplay.innerHTML = selectedMembers.map(m => `
+                    <div class="bg-indigo-700 text-white px-2 py-1 rounded-lg text-[11px] font-bold shadow-sm flex items-center gap-1.5 group transition-all hover:bg-indigo-800">
+                        <span class="${m.isMercenary ? 'text-yellow-300' : ''}">${m.name}</span>
+                        <button onclick="updateChecked(${m.id}, false)" class="text-indigo-300 hover:text-white transition">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                `).join('');
+            }
+
+            document.getElementById('selectedCount').innerText = selectedMembers.length;
         }
 
-        function updateCount() {
-            const count = allData.filter(m => m.checked).length;
-            document.getElementById('memberCountBadge').innerText = `${count}명`;
-            updateSelectedNamesDisplay();
-        }
-
-        function toggleAll(status) {
-            allData.forEach(m => m.checked = status);
-            document.querySelectorAll('.member-checkbox').forEach(box => box.checked = status);
-            updateCount();
+        function updateChecked(id, bool) {
+            const target = allData.find(m => m.id === id);
+            if (target) {
+                target.checked = bool;
+                renderTable();
+            }
         }
 
         function generateTeams() {
-            const selectedMembers = allData.filter(m => m.checked);
-            if (selectedMembers.length < 2) {
-                alert("최소 2명 이상의 멤버를 선택해주세요.");
-                return;
-            }
+            const attendees = allData.filter(m => m.checked);
+            if (attendees.length < 2) return alert("최소 2명 이상 선택해야 합니다.");
 
-            const teamCount = parseInt(document.querySelector('input[name="teamCount"]:checked').value);
-            const isFemale = (g) => g.includes('여') || g === 'F' || g === 'f' || g === 'Woman';
+            const teamCount = parseInt(document.getElementById('teamCount').value);
             
-            const females = selectedMembers.filter(m => isFemale(m.gender));
-            const males = selectedMembers.filter(m => !isFemale(m.gender));
+            let simulationPool = [...attendees];
+            let excludedMembers = [];
+            
+            const remainder = simulationPool.length % teamCount;
 
-            let bestResult = null;
-            let minDifference = Infinity;
+            if (remainder > 0) {
+                simulationPool.sort((a, b) => a.rating - b.rating);
+                excludedMembers = simulationPool.splice(0, remainder);
+            }
+            
+            const males = simulationPool.filter(m => m.gender === '남');
+            const females = simulationPool.filter(m => m.gender === '여');
 
-            const SIMULATION_COUNT = 200;
+            let bestTeams = null;
+            let minDiff = Infinity;
 
-            for(let i = 0; i < SIMULATION_COUNT; i++) {
-                const simResult = simulateOneRound(males, females, teamCount);
+            for (let i = 0; i < 200; i++) {
+                const teams = simulateOneRound(males, females, teamCount);
+                const ratings = teams.map(t => t.totalRating);
+                const diff = Math.max(...ratings) - Math.min(...ratings);
                 
-                const scores = simResult.map(t => t.totalRating);
-                const maxScore = Math.max(...scores);
-                const minScore = Math.min(...scores);
-                const diff = maxScore - minScore;
-
-                if (diff < minDifference) {
-                    minDifference = diff;
-                    bestResult = simResult;
-                } else if (diff === minDifference && Math.random() > 0.5) {
-                    bestResult = simResult;
+                if (diff < minDiff) { 
+                    minDiff = diff; 
+                    bestTeams = teams; 
                 }
+            }
+
+            if (excludedMembers.length > 0 && bestTeams) {
+                excludedMembers.sort(() => Math.random() - 0.5);
                 
-                if (minDifference < 0.1) break;
-            }
-            
-            currentTeams = bestResult; 
-            renderTeams(bestResult, minDifference);
-        }
+                let teamIndices = Array.from({ length: teamCount }, (_, i) => i);
+                teamIndices.sort(() => Math.random() - 0.5);
 
-        function shuffleArray(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-        }
-
-        function simulateOneRound(malesList, femalesList, teamCount) {
-            const shuffledMales = shuffleArray([...malesList]);
-            const shuffledFemales = shuffleArray([...femalesList]);
-
-            const maleSlots = getSlots(shuffledMales.length, teamCount);
-            const femaleSlots = getSlots(shuffledFemales.length, teamCount);
-
-            let teams = Array.from({ length: teamCount }, (_, i) => ({
-                id: i,
-                name: (i + 1) + "팀",
-                members: [],
-                totalRating: 0,
-                males: 0,
-                females: 0,
-                maxMales: maleSlots[i],
-                maxFemales: femaleSlots[i],
-                mercCount: 0 
-            }));
-
-            shuffleArray(teams);
-
-            function distributeGroup(group, isFemaleGroup) {
-                const mercs = group.filter(m => m.isMercenary);
-                const regulars = group.filter(m => !m.isMercenary);
-
-                const noisyRegulars = regulars.map(m => ({
-                    ...m,
-                    noisyRating: m.rating + (Math.random() - 0.5) * 2.0 
-                })).sort((a, b) => b.noisyRating - a.noisyRating);
-
-                const sortedRegulars = noisyRegulars.map(m => {
-                    const clean = { ...m };
-                    delete clean.noisyRating;
-                    return clean;
-                });
-
-                const assignToTeam = (member, isMercenaryStep) => {
-                    const validTeams = teams.filter(t => {
-                        if(isFemaleGroup) return t.females < t.maxFemales;
-                        else return t.males < t.maxMales;
-                    });
-
-                    if (validTeams.length === 0) return;
-
-                    validTeams.sort((a, b) => {
-                        if (isMercenaryStep) {
-                            if (a.mercCount !== b.mercCount) return a.mercCount - b.mercCount;
-                            return a.totalRating - b.totalRating;
-                        } else {
-                            return a.totalRating - b.totalRating;
-                        }
-                    });
-
-                    const targetTeam = validTeams[0];
-
+                excludedMembers.forEach((member, idx) => {
+                    const targetTeamIndex = teamIndices[idx % teamCount];
+                    const targetTeam = bestTeams[targetTeamIndex];
+                    
                     targetTeam.members.push(member);
                     targetTeam.totalRating += member.rating;
-                    if(isFemaleGroup) targetTeam.females++;
-                    else targetTeam.males++;
-                    
-                    if(isMercenaryStep) targetTeam.mercCount++;
-                };
-
-                mercs.forEach(m => assignToTeam(m, true));
-                sortedRegulars.forEach(m => assignToTeam(m, false));
+                    if (member.gender === '여') targetTeam.fCount++;
+                    else targetTeam.mCount++;
+                });
+                
+                const finalRatings = bestTeams.map(t => t.totalRating);
+                minDiff = Math.max(...finalRatings) - Math.min(...finalRatings);
             }
 
-            distributeGroup(shuffledFemales, true);
-            distributeGroup(shuffledMales, false);
+            currentTeams = bestTeams;
+            renderTeams(bestTeams, minDiff);
 
-            teams.sort((a, b) => a.id - b.id);
-
-            return teams;
+            const teamInfo = bestTeams.map(t => `${t.name}: ${t.members.map(m => m.name).join(', ')}`).join(' / ');
+            sendLog("팀 편성 완료", `격차: ${minDiff.toFixed(2)}, 결과: ${teamInfo}`);
         }
 
-        function getSlots(totalItems, binCount) {
-            const base = Math.floor(totalItems / binCount);
-            const remainder = totalItems % binCount;
-            const slots = new Array(binCount).fill(base);
-            for(let i=0; i<remainder; i++) {
-                slots[i]++;
-            }
-            return slots.sort(() => Math.random() - 0.5);
+        function simulateOneRound(males, females, teamCount) {
+            const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
+
+            const getSlots = (total, n) => {
+                const base = Math.floor(total / n);
+                const extra = total % n;
+                const slots = Array(n).fill(base);
+                const extraIndices = shuffle(Array.from({length: n}, (_, i) => i));
+                for(let i=0; i<extra; i++) slots[extraIndices[i]]++;
+                return slots;
+            };
+
+            const mSlots = getSlots(males.length, teamCount);
+            const fSlots = getSlots(females.length, teamCount);
+
+            const teams = Array.from({ length: teamCount }, (_, i) => ({
+                id: i, name: (i + 1) + "팀", members: [], totalRating: 0,
+                mCount: 0, fCount: 0, maxM: mSlots[i], maxF: fSlots[i]
+            }));
+
+            const splitByType = (list) => {
+                return {
+                    mercs: list.filter(m => m.isMercenary),
+                    regs: list.filter(m => !m.isMercenary)
+                };
+            };
+
+            const mGroup = splitByType(males);
+            const fGroup = splitByType(females);
+
+            const assign = (list, isFemale, isMercenaryMode) => {
+                let candidates;
+                if (isMercenaryMode) {
+                    candidates = shuffle(list); 
+                } else {
+                    candidates = list.map(m => ({ ...m, noisy: m.rating + (Math.random() - 0.5) * 1.5 }))
+                                     .sort((a, b) => b.noisy - a.noisy);
+                }
+
+                candidates.forEach(m => {
+                    let validTeams = teams.filter(t => isFemale ? t.fCount < t.maxF : t.mCount < t.maxM);
+                    if (validTeams.length === 0) return;
+
+                    if (isMercenaryMode) {
+                        validTeams.sort((a, b) => {
+                            const countA = isFemale ? a.fCount : a.mCount;
+                            const countB = isFemale ? b.fCount : b.mCount;
+                            return countA - countB;
+                        });
+                    } else {
+                        validTeams.sort((a, b) => a.totalRating - b.totalRating);
+                    }
+
+                    const target = validTeams[0];
+                    target.members.push(m);
+                    target.totalRating += m.rating;
+                    if (isFemale) target.fCount++; else target.mCount++;
+                });
+            };
+
+            assign(fGroup.mercs, true, true);
+            assign(mGroup.mercs, false, true);
+            assign(fGroup.regs, true, false);
+            assign(mGroup.regs, false, false);
+
+            return teams;
         }
 
         function renderTeams(teams, diff) {
             const container = document.getElementById('teamsContainer');
             container.innerHTML = '';
             container.className = `grid gap-6 ${teams.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`;
+            document.getElementById('balanceBadge').innerText = `최대 실력 격차: ${diff.toFixed(2)}점`;
 
-            const badge = document.getElementById('balanceBadge');
-            badge.innerHTML = `최대 점수차: ${diff.toFixed(2)}점`;
-
-            teams.forEach(team => {
-                const avgRating = (team.totalRating / (team.members.length || 1)).toFixed(2);
-                team.members.sort((a, b) => {
-                    const isMercA = !!a.isMercenary;
-                    const isMercB = !!b.isMercenary;
-
-                    if (isMercA !== isMercB) {
-                        return isMercA ? 1 : -1;
-                    }
-
-                    return b.rating - a.rating;
-                });
-
-                const card = document.createElement('div');
-                card.className = "bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200 flex flex-col";
-                
-                let memberListHtml = team.members.map(m => {
-                    const genderColor = (m.gender.includes('여') || m.gender === 'F') ? 'text-pink-500' : 'text-blue-500';
-                    return `
-                        <li class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
-                            <span class="font-medium text-slate-700">${m.name}</span>
-                            <div class="flex items-center gap-3">
-                                <span class="text-xs font-bold ${genderColor}">${m.gender}</span>
-                                <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-mono">${m.rating}</span>
-                            </div>
-                        </li>
-                    `;
-                }).join('');
-
-                card.innerHTML = `
-                    <div class="bg-indigo-600 text-white p-4 text-center relative">
-                        <h3 class="text-2xl font-bold">${team.name}</h3>
-                        <div class="absolute top-4 right-4 text-indigo-200 text-xs">
-                            <i class="fa-solid fa-users"></i> ${team.members.length}명
-                        </div>
+            teams.forEach(t => {
+                t.members.sort((a, b) => b.rating - a.rating);
+                const div = document.createElement('div');
+                div.className = "bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden flex flex-col";
+                div.innerHTML = `
+                    <div class="bg-indigo-600 p-4 text-white text-center">
+                        <h3 class="text-2xl font-black">${t.name}</h3>
+                        <p class="text-[10px] opacity-75 mt-1">${t.members.length}명 (남${t.mCount}:여${t.fCount})</p>
                     </div>
-                    <div class="p-4 bg-indigo-50 border-b border-indigo-100 flex justify-around text-center">
-                        <div>
-                            <div class="text-xs text-indigo-400 uppercase font-bold">총 평점</div>
-                            <div class="font-bold text-indigo-800 text-lg">${team.totalRating.toFixed(1)}</div>
-                        </div>
-                        <div>
-                            <div class="text-xs text-indigo-400 uppercase font-bold">평균</div>
-                            <div class="font-bold text-indigo-800 text-lg">${avgRating}</div>
-                        </div>
-                        <div>
-                            <div class="text-xs text-indigo-400 uppercase font-bold">성비(남:여)</div>
-                            <div class="font-bold text-indigo-800 text-lg">
-                                <span class="text-blue-600">${team.males}</span>:<span class="text-pink-600">${team.females}</span>
-                            </div>
-                        </div>
+                    <div class="p-4 bg-indigo-50 border-b border-indigo-100 flex justify-around text-center font-bold text-indigo-800">
+                        <div><p class="text-[10px] text-indigo-400">총점</p>${t.totalRating.toFixed(1)}</div>
+                        <div><p class="text-[10px] text-indigo-400">평균</p>${(t.totalRating / (t.members.length || 1)).toFixed(1)}</div>
                     </div>
-                    <div class="p-4 flex-grow overflow-y-auto max-h-96">
-                        <ul>${memberListHtml}</ul>
+                    <div class="p-4 flex-grow">
+                        <ul class="space-y-2">
+                            ${t.members.map(m => `
+                                <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
+                                    <span class="font-bold ${m.isMercenary ? 'text-indigo-600 italic' : 'text-slate-700'}">
+                                        ${m.isMercenary ? '<i class="fa-solid fa-star text-xs text-yellow-400 mr-1"></i>' : ''}${m.name}
+                                    </span>
+                                    <span class="text-[10px] font-black ${m.gender === '여' ? 'text-pink-500' : 'text-blue-500'}">${m.gender}</span>
+                                </li>
+                            `).join('')}
+                        </ul>
                     </div>
                 `;
-                container.appendChild(card);
+                container.appendChild(div);
             });
-
             document.getElementById('resultSection').classList.remove('hidden');
             document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
         }
 
         async function downloadImage() {
-            if (!currentTeams || currentTeams.length === 0) return;
+            if (!currentTeams.length) return;
+            sendLog("clicked", "approached image download");
+            const exportDiv = document.createElement('div');
+            exportDiv.style.width = '1200px';
+            exportDiv.style.padding = '60px';
+            exportDiv.style.background = '#ffffff';
+            exportDiv.style.position = 'fixed';
+            exportDiv.style.left = '-9999px';
+            const dateStr = new Date().toLocaleString('ko-KR', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
 
-            const exportContainer = document.createElement('div');
-            exportContainer.style.width = '1080px';
-            exportContainer.style.minHeight = '720px';
-            exportContainer.style.position = 'fixed';
-            exportContainer.style.left = '-9999px';
-            exportContainer.style.top = '0';
-            exportContainer.style.backgroundColor = '#ffffff';
-            exportContainer.style.padding = '0';
-            exportContainer.style.display = 'flex';
-            exportContainer.style.flexDirection = 'column';
-            exportContainer.style.boxSizing = 'border-box';
-
-            const now = new Date();
-            const dateText = now.toLocaleString('ko-KR', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-
-            let html = `
-                <div style="text-align: center; margin: 40px 0;">
-                    <h1 style="font-size: 48px; font-weight: bold; color: #334155; margin: 0;">팀 편성 결과</h1>
-                    <p style="font-size: 24px; color: #64748b; margin-top: 10px;">${dateText}</p>
-                </div>
-                <div style="display: flex; gap: 30px; flex: 1; align-items: flex-start; padding: 0 40px 40px 40px;">
-            `;
-            
-            currentTeams.forEach(team => {
-                team.members.sort((a, b) => {
-                    const isMercA = !!a.isMercenary;
-                    const isMercB = !!b.isMercenary;
-
-                    if (isMercA !== isMercB) {
-                        return isMercA ? 1 : -1;
-                    }
-                    return a.name.localeCompare(b.name, 'ko');
-                });
-                
-                html += `
-                    <div style="flex: 1; background: white; border-radius: 20px; overflow: hidden; border: 2px solid #668ffe;">
-                        <div style="background: #4f46e5; color: white; padding: 20px; text-align: center;">
-                            <h2 style="font-size: 36px; font-weight: bold; margin: 0;">${team.name}</h2>
-                            <span style="font-size: 18px; opacity: 0.9;">${team.members.length}명</span>
+            let teamsHtml = currentTeams.map(t => {
+                t.members.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+                return `
+                    <div style="flex:1; background:white; border-radius:30px; border:4px solid #4f46e5; margin:0 15px; overflow:hidden;">
+                        <div style="background:#4f46e5; color:white; padding:30px; text-align:center;">
+                            <h2 style="font-size:42px; font-weight:900; margin:0;">${t.name}</h2>
+                            <p style="font-size:18px; margin-top:10px; opacity:0.8;">${t.members.length}명 (남${t.mCount}:여${t.fCount})</p>
                         </div>
-                        <div style="padding: 20px;">
-                            <ul style="list-style: none; padding: 0; margin: 0;">
-                `;
-
-                team.members.forEach(m => {
-                    const isFemale = m.gender.includes('여') || m.gender === 'F';
-                    const genderColor = isFemale ? '#ec4899' : '#3b82f6'; 
-                    const genderBg = isFemale ? '#fdf2f8' : '#eff6ff';
-                    
-                    html += `
-                        <li style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #8c8c8c; font-size: 20px; background: white;">
-                            <span style="font-weight: 500; padding: 0px 0px 12px; color: #1e293b;">${m.name}</span>
-                            <span style="background: ${genderBg}; color: ${genderColor}; padding: 2px 12px 16px; border-radius: 12px; font-size: 16px; font-weight: bold;">${m.gender}</span>
-                        </li>
-                    `;
-                });
-
-                html += `
-                            </ul>
+                        <div style="padding:30px;">
+                            ${t.members.map(m => `
+                                <div style="display:flex; justify-content:space-between; padding:15px 0; border-bottom:2px solid #f1f5f9; font-size:24px;">
+                                    <span style="font-weight:bold; color:${m.isMercenary ? '#4f46e5' : '#334155'};">
+                                        ${m.isMercenary ? '★ ' : ''}${m.name}
+                                    </span>
+                                    <span style="color:${m.gender==='여'?'#ec4899':'#3b82f6'}; font-weight:900;">${m.gender}</span>
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
                 `;
-            });
+            }).join('');
 
-            html += `</div>`;
-            exportContainer.innerHTML = html;
-            document.body.appendChild(exportContainer);
+            exportDiv.innerHTML = `
+                <div style="text-align:center; margin-bottom:50px;">
+                    <h1 style="font-size:60px; font-weight:900; color:#1e293b; margin:0;">⚽ 팀 편성 결과</h1>
+                    <p style="font-size:22px; color:#64748b; margin-top:15px;">생성일시: ${dateStr}</p>
+                </div>
+                <div style="display:flex; align-items:flex-start;">${teamsHtml}</div>
+            `;
+            document.body.appendChild(exportDiv);
+            const canvas = await html2canvas(exportDiv, { scale: 1, backgroundColor: '#ffffff' });
+            const link = document.createElement('a');
+            link.download = `Team_Result_${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            document.body.removeChild(exportDiv);
+        }
 
+        const LOG_URL = "https://script.google.com/macros/s/AKfycbydJo7wrNeoZd1DNMUQ3IGvAdJinu2_fzNCpUamAzmaBx1L9IL43-Lfor9XVUXL1sJS/exec";
+
+        async function sendLog(type, content) {
             try {
-                const canvas = await html2canvas(exportContainer, {
-                    scale: 1,
-                    useCORS: true,
-                    backgroundColor: '#ffffff'
+                await fetch(LOG_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify({ type, content })
                 });
-
-                const link = document.createElement('a');
-                link.download = `Team_Result_${Date.now()}.png`;
-                link.href = canvas.toDataURL('image/png');
-                link.click();
             } catch (err) {
-                console.error("Image generation failed", err);
-                alert("이미지 저장 중 오류가 발생했습니다.");
-            } finally {
-                document.body.removeChild(exportContainer);
+                console.error("Log failed", err);
             }
         }
+
+        
     </script>
 </body>
 </html>
