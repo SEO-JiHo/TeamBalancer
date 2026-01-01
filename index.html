@@ -229,14 +229,14 @@
                 }
 
                 renderTable();
-                alert(`분석 완료!\n총 ${foundNamesSet.size}명의 이름을 인식하였으며, 새롭게 ${totalFound}명을 체크했습니다.`);
+                alert(`분석 완료.\n총 ${foundNamesSet.size}명의 이름을 인식하였으며, 새롭게 ${totalFound}명을 체크했습니다.`);
                 
                 textElem.innerText = "추가 분석 가능 (기존 체크 유지됨)";
                 iconElem.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
 
             } catch (err) {
                 console.error("OCR Error:", err);
-                alert("이미지 분석 중 엔진 오류가 발생했습니다.");
+                alert("이미지 분석 중 엔진 오류가 발생했습니다. 새로고침하고 다시 시도해주세요.");
                 textElem.innerText = originalText;
                 iconElem.innerHTML = '<i class="fa-solid fa-camera-retro"></i>';
             }
@@ -390,7 +390,7 @@
             renderTeams(bestTeams, minDiff);
 
             const teamInfo = bestTeams.map(t => `${t.name}: ${t.members.map(m => m.name).join(', ')}`).join(' / ');
-            sendLog("팀 편성 완료", `격차: ${minDiff.toFixed(2)}, 결과: ${teamInfo}`);
+            sendLog("completed", `${teamInfo}`);
         }
 
         function simulateOneRound(males, females, teamCount) {
@@ -501,7 +501,7 @@
 
         async function downloadImage() {
             if (!currentTeams.length) return;
-            sendLog("clicked", "approached image download");
+            sendLog("approached image download");
             const exportDiv = document.createElement('div');
             exportDiv.style.width = '1200px';
             exportDiv.style.padding = '60px';
