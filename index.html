@@ -339,22 +339,39 @@
 
             const teamCount = parseInt(document.getElementById('teamCount').value);
             
-            let simulationPool = [...attendees];
+            // 1. 성별 분리 및 평점 오름차순 정렬 (평점 낮은 사람이 앞 = 제외 1순위)
+            let males = attendees.filter(m => m.gender === '남').sort((a, b) => a.rating - b.rating);
+            let females = attendees.filter(m => m.gender === '여').sort((a, b) => a.rating - b.rating);
+            
             let excludedMembers = [];
-            
-            const remainder = simulationPool.length % teamCount;
+            let totalRemainder = attendees.length % teamCount;
 
-            if (remainder > 0) {
-                simulationPool.sort((a, b) => a.rating - b.rating);
-                excludedMembers = simulationPool.splice(0, remainder);
+            // 2. 인원이 팀 수로 나누어 떨어지지 않는 경우, 성별 분포를 고려하여 깍두기 선정
+            while (totalRemainder > 0) {
+                const mRem = males.length % teamCount;
+                const fRem = females.length % teamCount;
+
+                // 나머지가 발생하는 성별에서 우선 제외
+                if (mRem > 0 && fRem === 0) {
+                    excludedMembers.push(males.shift());
+                } else if (fRem > 0 && mRem === 0) {
+                    excludedMembers.push(females.shift());
+                } else {
+                    // 둘 다 나머지가 있거나(3팀 분할 등), 둘 다 없는 경우(방어 코드)
+                    // 평점이 더 낮은 멤버를 제외하여 밸런스 영향 최소화
+                    if (males.length > 0 && (females.length === 0 || males[0].rating <= females[0].rating)) {
+                        excludedMembers.push(males.shift());
+                    } else {
+                        excludedMembers.push(females.shift());
+                    }
+                }
+                totalRemainder--;
             }
-            
-            const males = simulationPool.filter(m => m.gender === '남');
-            const females = simulationPool.filter(m => m.gender === '여');
 
             let bestTeams = null;
             let minDiff = Infinity;
 
+            // 시뮬레이션 반복
             for (let i = 0; i < 200; i++) {
                 const teams = simulateOneRound(males, females, teamCount);
                 const ratings = teams.map(t => t.totalRating);
@@ -366,9 +383,12 @@
                 }
             }
 
+            // 인원이 안 맞아서 제외되었던 멤버들을 최종 팀에 랜덤 분배
             if (excludedMembers.length > 0 && bestTeams) {
+                // 제외된 멤버들을 랜덤하게 섞음
                 excludedMembers.sort(() => Math.random() - 0.5);
                 
+                // 어느 팀에 넣을지도 랜덤화
                 let teamIndices = Array.from({ length: teamCount }, (_, i) => i);
                 teamIndices.sort(() => Math.random() - 0.5);
 
@@ -382,6 +402,7 @@
                     else targetTeam.mCount++;
                 });
                 
+                // 최종 결과의 격차 다시 계산
                 const finalRatings = bestTeams.map(t => t.totalRating);
                 minDiff = Math.max(...finalRatings) - Math.min(...finalRatings);
             }
